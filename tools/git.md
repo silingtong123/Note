@@ -12,7 +12,8 @@ git push origin master 本地分支推送到远端
 ```
 git config --list
 git config --global user.name "lingtong.si"
-git config --global user.email "lingtong.si@appshahe.com" 
+git config --global user.email "lingtong.si@appshahe.com"
+apt-get install ssh-client #安装ssh客户端 
 ssh-keygen -t rsa -C "lingtong.si@appshahe.com" 
 
 # 在github上添加新生成的ssh秘钥
