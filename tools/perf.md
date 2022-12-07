@@ -20,5 +20,5 @@ apt install flex bison libelf-dev libdw-dev binutils-dev libiberty-dev libslang2
 ```
 make && make install prefix="/usr"
 ps -ef 获取进程id
-pref record -g -p 进程号 --sleep 60 收集60s统计信息，perf report查看性能统计信息
+perf record -g -p 进程号 -- sleep 60 收集60s统计信息，perf report查看性能统计信息
 ```
