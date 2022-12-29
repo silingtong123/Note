@@ -290,6 +290,23 @@ tf.gather(
 
 - - -
 
+#### **tf.one_hot**
+
+```python
+ def one_hot(indices,
+            depth,
+            on_value=None,
+            off_value=None,
+            axis=None,
+            dtype=None,
+            name=None):
+  """Returns a one-hot tensor.
+```
+
+对对应索引位置的值设置为on_value，其余位置为off_value， -1也是off_value
+
+- - -
+
 #### ****
 
 ```python
