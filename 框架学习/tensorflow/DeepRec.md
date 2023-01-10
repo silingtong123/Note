@@ -1,10 +1,124 @@
 # DeepRec 源码学习
 
+## DeepRec 内存管理
+1. 如何管理数据的存储，特别是EV，EV针对不同的存储介质如何做出适配？
+   - 首先会注册内存存在的一些allocator,具体调用如下：
+      - REGISTER_MEM_ALLOCATOR -》REGISTER_MEM_ALLOCATOR_UNIQ_HELPER-》REGISTER_MEM_ALLOCATOR_UNIQ -》static AllocatorFactoryRegistration allocator_factory_reg_##ctr
+      - AllocatorFactoryRegistration -》AllocatorFactoryRegistry::singleton()->Register   
+   - 使用举例：
+      - REGISTER_MEM_ALLOCATOR("TensorPoolAllocator", 300, TensorPoolAllocatorFactory);
+      - REGISTER_MEM_ALLOCATOR("EVAllocator", 20, EVAllocatorFactory); 存储EV
+2. EVAllocatorFactory 和 EVAllocator具体是什么？如何工作？
+   - EVAllocatorFactory::CreateAllocator --> new EVAllocator 
+     - EVAllocator::AllocateRawAlignedMalloc -> posix_memalign 使用linux底层接口申请内存
+3. AllocatorStats  是什么？有什么作用？
+  1. 分配器收集的运行时统计信息。与 stream_executor::AllocatorStats 完全相同，但独立定义以保持 StreamExecutor 和 TensorFlow 的相互独立性
+  2. 数据成员：
+    - num_allocs 分配内存的次数
+    - bytes_in_use 分配的字节数
+    - peak_bytes_in_use 分配的字节数峰值
+    - largest_alloc_size 最大的单次申请大小
+    - bytes_reserved 保留的字节数
+    - peak_bytes_reserved 保留的字节数峰值
+4. DBValuePtr 管理DB上EV的value
+  1. DBValuePtr:: GetOrAllocate 若存在，则从level_db_->Get， 否则使用默认值，并调用level_db_->Put
+  2. 调用commit也会调用level_db_->Put
+  3. COMPUTE_FTRL --> commit, 还有一些op的compute函数也会调用该函数
+
 ## EV存储
+### EmbeddingVar数据读写
+
+```C++
+class  EmbeddingVar{
+  std::string name_;
+  bool is_initialized_ = false;
+
+  mutex mu_;
+
+  V* default_value_;
+  int64 value_len_;
+  Allocator* alloc_;
+  embedding::StorageManager<K, V>* storage_manager_;
+  EmbeddingConfig emb_config_;
+  EmbeddingFilter<K, V, EmbeddingVar<K, V>>* filter_;
+  std::function<void(ValuePtr<V>*, int, int64)> add_freq_fn_;
+  std::function<void(ValuePtr<V>*, int64)> update_version_fn_;
+}
+
+//isfilter
+void LookupOrCreate(...) {
+    ...
+    filter_->LookupOrCreate()
+    // ev_->LookupOrCreateKey 
+    // ev_->LookupOrCreateEmb 
+}
+
+Status LookupOrCreateKey(K key, ValuePtr<V>** value_ptr) {
+    ...
+    storage_manager_->GetOrCreate
+}
+
+V* LookupOrCreateEmb(ValuePtr<V>* value_ptr, const V* default_v){
+    ...
+    value_ptr->GetOrAllocate
+}
+```
+
+EV通过调用storage_manager_来进行数据的读写
+
+```C++
+class StorageManager {
+  int32 hash_table_count_;
+  std::string name_;
+  std::vector<std::pair<KVInterface<K, V>*, Allocator*>> kvs_;
+  std::vector<ValuePtr<V>*> value_ptr_out_of_date_;
+  std::function<ValuePtr<V>*(Allocator*, size_t)> new_value_ptr_fn_;
+  StorageConfig sc_;
+  bool is_multi_level_;
+
+  int64 alloc_len_;
+  int64 total_dims_;
+
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  Thread* eviction_thread_;
+  BatchCache<K>* cache_;
+  int64 cache_capacity_;
+  mutex mu_;
+  volatile bool shutdown_ GUARDED_BY(mu_) = false;
+
+  volatile bool done_ = false;
+  std::atomic_flag flag_ = ATOMIC_FLAG_INIT;
+}
+```
+
+---
+
+#### **写数据**
+
+
+EmbeddingVar::Commit -->  storage_manager_->Commit -->kvs_[0].first -->Commit
+
+   kvs_[0]为 LocklessHashMap，其commit函数为空，未实际实现，真正插入数据EmbeddingVar::LookupOrCreateKey--》storage_manager_->GetOrCreate -》kvs_[0]first->Insert
+
+StorageManager中当储存介质大于2时，会存在一个LRU的cache_，eviction_thread_ 后台线程调用BatchEviction,将过期的ids从LocklessHashMap移除，在第二种介质(比如levelDB,SSD)中提交
+
+BatchEviction -> kvs_[0].first->Remove(evic_ids[i])
+                 kvs_[1].first->Commit(evic_ids[i], value_ptr) 
+当kvs_[1]为levelDB时，kvs_[1].first->Commit会向levelDB中写数据，当kvs_[1]为SSD时，kvs_[1].first->Commit会向SSD中写数据
+
+EmbeddingVar::BatchCommit --》 storage_manager_->BatchCommit --》 kv.first->BatchCommit(keys, value_ptrs)
+
+- - - -
+#### **读数据**
+
+LookupOrCreateKey --》 storage_manager_->GetOrCreate  --》kvs_[level].first->Lookup  会去多个地方找，内存找不到就到第二种介质中找
+
+---
 
 ### DRAM_SSDHASH
 
-kv存储方式
+kv存储方式:
+使用kv mmap方式将硬件映射带内存，使用mmap取消映射
 ```C++
 class SSDHashKV : public KVInterface<K, V>
 ```
@@ -44,6 +158,64 @@ BatchEviction 中当cache_count大于cache_capacity_，会删除部分过期的i
         }
       }
 ```
+---
+#### google/dense_hash_map
+
+用法 [https://github.com/sparsehash/sparsehash](https://github.com/sparsehash/sparsehash)：
+- 在插入数据之前，需要先调用set_empty_key()设置一个空Key，Key的值可以为任意符合类型的。但请注意之后插入的Key不能和空Key相同，否则会abort。这个空Key的目的是为了防止死循环，它需要这样一个标志来判断查找是否该结束了
+- 在使用erase()时，前面必须调用set_deleted_key（）函数，set_deleted_key与set_empty_key的参数不应该相同。
+
+**API**
+
+sparse_hash_map、dense_hash_map、sparse_hash_set 和 dense_hash_set 的 API 是 SGI 的 hash_map 类 API 的超集。
+有关 API 的更多信息，请参阅 doc/sparse_hash_map.html 等。
+
+这些类的用法不同于 SGI 的 hash_map 和其他
+hashtable的实现，主要有以下几种方式：
+1. dense_hash_map 需要预留一个键值作为'空桶'值，通过set_empty_key()方法设置。 在使用 dense_hash_map 之前，*必须*调用此方法。 将任何元素插入其键等于空键的 dense_hash_map 是非法的。
+
+2. 对于dense_hash_map和sparse_hash_map，如果你想从哈希表中删除元素，你必须预留一个键值作为'deleted bucket'值，通过set_deleted_key()方法设置。 如果您的哈希映射是仅插入的，则无需调用此方法。 如果调用 set_deleted_key()，则将任何元素插入键等于删除键的 dense_hash_map 或 sparse_hash_map 是非法的。
+
+3. 这些哈希映射实现支持 I/O。 见下文。
+
+还有一些较小的差异：
+
+1. 构造函数采用一个可选参数，该参数指定您希望插入到哈希表中的元素数。 这与 SGI 的 hash_map 实现不同，它采用可选数量的桶。
+
+2. erase() 不会立即回收内存。 因此，erase() 不会使任何迭代器失效，从而使循环正确：
+      for (it = ht.begin(); it != ht.end(); ++it)
+        if (...) ht.erase(it);
+    另一个结果是，一系列的 erase() 调用会使您的哈希表使用比它需要的更多的内存。 哈希表将在下次调用 insert() 时自动压缩，但要手动压缩哈希表，您可以调用 ht.resize(0)
+
+**IO**
+
+除了正常的哈希映射操作之外，sparse_hash_map 还可以将哈希表读写到磁盘。 （dense_hash_map也有API，但是还没实现，写总会失败。）
+
+在最简单的情况下，编写哈希表就像在哈希表上调用两个方法一样简单：
+    ht.write_metadata(fp);
+    ht.write_nopointer_data(fp);
+
+读取这些数据同样简单：
+    google::sparse_hash_map<...> ht;
+    ht.read_metadata(fp);
+    ht.read_nopointer_data(fp);
+
+如果键和值不包含任何指针，以上内容就足够了：它们是基本 C 类型或基本 C 类型的集合。 如果键和/或值确实包含指针，您仍然可以通过将 write_nopointer_data() 替换为自定义写入例程来存储哈希表。 请参见 sparse_hash_map.html 等。 想要查询更多的信息。
+
+**可分割**
+
+除了 hash-map 和 hash-set 类之外，这个包还提供了 sparsetable.h，这是一个数组实现，它使用与数组中元素数量成比例的空间，而不是最大元素索引。 它使用的空间开销非常小：每个条目 2 到 5 bit。 有关 API，请参阅 doc/sparsetable.html。
+
+**资源使用**
+
+* 假设典型的平均占用率为 50%，sparse_hash_map 的每个哈希映射条目的内存开销约为 4 到 10 bit。
+* dense_hash_map 有 2-3 倍的内存开销：如果你的哈希表数据占用 X 字节，dense_hash_map 将使用 3X-4X 内存总量。
+
+调整大小时，哈希表的大小往往会加倍，从而产生额外的 50% 空间开销。 dense_hash_map 实际上确实有一个显着的“高水位线”内存使用要求，它是调整大小时表中散列条目大小的 6 倍（当达到 50% 的占用率时，表会调整到以前大小的两倍，而旧表 (2x) 被复制到新表 (4x))。
+
+然而，sparse_hash_map 被编写为在调整大小时只需要很少的空间开销：每个哈希表条目只有几bit。
+
+- - - 
 
 ### **DeepRec PRMalloc**
 
