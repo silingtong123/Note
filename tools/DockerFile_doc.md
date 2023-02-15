@@ -86,6 +86,10 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
   ```
 - 启动命令：CUDA_VISIBLE_DEVICES=0,1 python -m hybridbackend.run python ranking/taobao/train.py /Newdeeprec/day_0.parquet
 - 查看gpu利用率：watch -n 2 -d nvidia-smi
+- https://cdn.233xyx.com/1671162381712_317.zip
+- http://easyrec.oss-cn-beijing.aliyuncs.com/data/taobao/day_0.parquet
+- http://easyrec.oss-cn-beijing.aliyuncs.com/data/taobao/day_1.parquet 
+- http://easyrec.oss-cn-beijing.aliyuncs.com/data/taobao/day_2.parquet 
 
 ### 磁盘预测测试
 - export TF_SSDHASH_ASYNC_COMPACTION=0

@@ -25,11 +25,42 @@
   2. 调用commit也会调用level_db_->Put
   3. COMPUTE_FTRL --> commit, 还有一些op的compute函数也会调用该函数
 
+## EV 调用
+常用的op在kv_variable_ops.h/kv_variable_ops.cc
 ## EV存储
 ### EmbeddingVar数据读写
 
 ```C++
+class EmbeddingFilter {// 提供接口
+  // LookupOrCreate
+  // LookupOrCreateKey
+  // CreateGPUBatch
+  // GetFreq
+  // Import
+  // Lookup
+}
+class BloomFilter : public EmbeddingFilter<K, V, EV>{}
+class CounterFilter : public EmbeddingFilter<K, V, EV>{}
+class NullableFilter : public EmbeddingFilter<K, V, EV>{}
+
+// EVRestoreNoPartition -> ev->Import -> filter_->Import -> ev_->LookupOrCreateKey; ev_->LookupOrCreateEmb
+EmbeddingVar::LookupOrCreateEmb(ValuePtr<V>* value_ptr, const V* default_v)
+EmbeddingVar::LookupOrCreateKey(K key, ValuePtr<V>** value_ptr)
+
 class  EmbeddingVar{
+    EmbeddingVar(const string& name,
+               embedding::StorageManager<K, V>* storage_manager,
+               EmbeddingConfig emb_cfg = EmbeddingConfig(),
+               Allocator* alloc = nullptr):
+      name_(name),
+      storage_manager_(storage_manager),
+      default_value_(nullptr),
+      default_value_no_permission_(nullptr),
+      value_len_(0),
+      alloc_(alloc),
+      emb_config_(emb_cfg){}
+  
+
   std::string name_;
   bool is_initialized_ = false;
 
@@ -38,9 +69,12 @@ class  EmbeddingVar{
   V* default_value_;
   int64 value_len_;
   Allocator* alloc_;
+  // storage_manager_ 外界传入
   embedding::StorageManager<K, V>* storage_manager_;
   EmbeddingConfig emb_config_;
+  //filter_初始化 -> CreateFilter -> 根据emb_config.filter_freq和跟进emb_config.kHashFunc选择，默认选择NullableFilter
   EmbeddingFilter<K, V, EmbeddingVar<K, V>>* filter_;
+  
   std::function<void(ValuePtr<V>*, int, int64)> add_freq_fn_;
   std::function<void(ValuePtr<V>*, int64)> update_version_fn_;
 }
@@ -159,6 +193,8 @@ BatchEviction 中当cache_count大于cache_capacity_，会删除部分过期的i
       }
 ```
 ---
+
+
 #### google/dense_hash_map
 
 用法 [https://github.com/sparsehash/sparsehash](https://github.com/sparsehash/sparsehash)：
@@ -423,4 +459,15 @@ class Buffer {
   }
 }
 
+```
+
+```C++
+class {
+  static const int64 kFullExtent;
+
+  // TODO(yangke): switch to Eigen once it supports variable size arrays.
+  // A value of
+  gtl::InlinedVector<int64, 4> starts_;
+  gtl::InlinedVector<int64, 4> lengths_;
+}
 ```

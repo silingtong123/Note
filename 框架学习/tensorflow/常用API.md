@@ -167,7 +167,7 @@ tf.reduce_sum(
 tf.multiply 
 ```
 
-两个矩阵中对应元素各自相乘
+两个矩阵中对应元素各自相乘,笛卡尔积为A,B集合的所有元素组合的排列，比如A,B元素个数分别为3，5且元素不同，此时笛卡尔积集合个数为3*5， a1为例，(a1,b1) ... (a1, b5) 
 - - -
 
 #### **tf.matmul**
@@ -307,9 +307,200 @@ tf.gather(
 
 - - -
 
-#### ****
+#### **tf.reshape**
 
 ```python
+tf.reshape(
+    tensor, shape, name=None
+)
 ```
 
+shape为-1，将tensor转换为1维的tensor,类似数组
 - - -
+
+### **tf.data.Dataset**
+```python
+
+# 将转换函数应用于此数据集, 
+# apply 启用自定义数据集转换的链接，这些转换表示为采用一个数据集参数并返回转换后的数据集的函数
+apply(
+    transformation_func
+)
+
+# 将此数据集的连续元素组合成批次
+# 结果元素的组件将有一个额外的外部维度，它将是 batch_size（如果 batch_size 没有将输入元素的数量 N 平均划分并且 drop_remainder 为 False，则最后一个元素的 N % batch_size）。 如果您的程序依赖于具有相同外部尺寸的批次，则应将 drop_remainder 参数设置为 True 以防止生成较小的批次
+batch(
+    batch_size, drop_remainder=False
+)
+
+# 缓存此数据集中的元素
+cache(
+    filename=''
+)
+
+# 通过将给定数据集与此数据集连接来创建数据集
+concatenate(
+    dataset
+)
+
+# 枚举此数据集的元素。类似于python的enumerate,enumerate多用于在for循环中得到计数，利用它可以同时获得索引和值
+enumerate(
+    start=0
+)
+
+# 根据谓词过滤此数据集
+filter(
+    predicate
+)
+
+# 在这个数据集中映射 map_func，并交错结果
+interleave(
+    map_func, cycle_length=AUTOTUNE, block_length=1, num_parallel_calls=None
+)
+
+# 匹配一个或多个 glob 模式的所有文件的数据集
+@staticmethod
+list_files(
+    file_pattern, shuffle=None, seed=None
+)
+
+# 创建一个迭代器以枚举此数据集的元素
+make_initializable_iterator(
+    shared_name=None
+)
+
+# 创建一个迭代器以枚举此数据集的元素
+make_one_shot_iterator()
+
+# 跨该数据集的元素映射 map_func
+# 此转换将 map_func 应用于此数据集的每个元素，并返回包含转换后元素的新数据集，顺序与它们在输入中出现的顺序相同
+map(
+    map_func, num_parallel_calls=None
+)
+# -------------------------------example-------------------------------------
+sequence = np.array([[1, 3], [2, 3], [3, 4]])
+def generator():
+    for el in sequence:
+        yield el
+
+dataset = tf.data.Dataset.from_generator(generator,
+                                         output_types=(tf.float32),
+                                         output_shapes=(tf.TensorShape([2])))
+
+iterator = dataset.make_initializable_iterator()
+next_element = iterator.get_next()
+
+with tf.Session() as sess:
+    sess.run(iterator.initializer)
+    print(sess.run(next_element))
+```
+数据集可用于将输入管道表示为元素的集合和作用于这些元素的转换的“逻辑计划”
+--- 
+
+### **tf.train.MonitoredTrainingSession**
+```python
+tf.train.MonitoredTrainingSession(
+    master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None,
+    chief_only_hooks=None, save_checkpoint_secs=USE_DEFAULT,
+    save_summaries_steps=USE_DEFAULT, save_summaries_secs=USE_DEFAULT, config=None,
+    stop_grace_period_secs=120, log_step_count_steps=100, max_wait_secs=7200,
+    save_checkpoint_steps=USE_DEFAULT, summary_dir=None
+)
+
+tf.train.MonitoredSession(
+    session_creator=None, hooks=None, stop_grace_period_secs=120
+)
+
+# MonitoredSession的method
+
+close()
+
+run(
+    fetches, feed_dict=None, options=None, run_metadata=None
+)
+
+run_step_fn(
+    step_fn
+)
+
+should_stop()
+
+
+```
+对于cheif，此实用程序设置适当的会话初始化器/恢复器。 它还创建与检查点和摘要保存相关的挂钩。 对于worker，此实用程序设置适当的会话创建者，等待主管初始化/恢复。 请查看 tf.compat.v1.train.MonitoredSession 了解更多信息
+
+初始化：在创建时，受监视的会话按给定顺序执行以下操作：
+- 为每个给定的钩子调用 hook.begin()
+- 通过 scaffold.finalize() 完成图表
+- 创建会话
+- 通过脚手架提供的初始化操作初始化模型
+- 如果检查点存在则恢复变量
+- 启动队列运行器
+- 调用 hook.after_create_session()
+
+运行：调用 run() 时，受监视的会话会执行以下操作：
+- 调用 hook.before_run()
+- 使用合并的提取和 feed_dict 调用 TensorFlow session.run()
+- 调用 hook.after_run()
+- 返回用户询问的 session.run() 结果
+- 如果发生 AbortedError 或 UnavailableError，它会在再次执行 run() 调用之前恢复或重新初始化会话
+
+退出：在 close() 时，受监控的会话按顺序执行以下操作：
+- 调用 hook.end()
+- 关闭队列运行器和会话
+- 如果将 monitored_session 用作上下文，则抑制表明所有输入均已处理的 OutOfRange 错误
+
+注意：这不同于tf.compat.v1.Session。 例如，它不能执行以下操作
+- 它不能设置为默认会话。
+- 它不能发送到 saver.save。
+- 它不能发送到 tf.train.start_queue_runners。
+
+--- 
+
+### **SessionRunHook**
+```python
+# 其method
+
+#创建新的 TensorFlow 会话时调用
+after_create_session(
+    session, coord
+)
+
+
+# 在每次调用 run() 之后调用
+after_run(
+    run_context, run_values
+)
+
+# 在每次调用 run() 之前调用
+# 您可以从此调用返回一个 SessionRunArgs 对象，指示要添加到即将到来的 run() 调用的操作或张量。 这些操作/张量将与最初传递给原始 run() 调用的操作/张量一起运行。 您返回的运行参数还可以包含要添加到 run() 调用的提要
+# 此时图表已完成，您无法添加操作
+before_run(
+    run_context
+)
+
+
+# 在使用会话之前调用一次
+# 调用时，默认图形是将在会话中启动的图形。 挂钩可以通过向其添加新操作来修改图形。 在 begin() 调用之后，图形将被最终确定，其他回调不能再修改图形。 在同一张图上第二次调用 begin() 不应更改图
+begin()
+
+# 在会话结束时调用
+# 如果挂钩想要运行最终操作，例如保存最后一个检查点，则可以使用会话参数。
+# 如果 session.run() 引发 OutOfRangeError 或 StopIteration 以外的异常，则不会调用 end()。 
+# 当 session.run() 引发 OutOfRangeError 或 StopIteration 时，请注意 end() 和 after_run() 行为之间的区别。 在这种情况下，会调用 end() 但不会调用 after_run()
+end(
+    session
+)
+
+```
+
+挂钩以扩展对 MonitoredSession.run() 的调用
+--- 
+
+
+### ****
+```python
+
+```
+
+--- 
