@@ -62,6 +62,7 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
 - 删除容器：docker rm continer_name
 - 查看镜像： docker images | grep
 - 删除镜像：docker rmi image_name
+- 重命名镜像：docker tag 1417b43a3ff5 faster-rcnn-3d:v1
 
 ### 单机多卡测试
 - 启动容器: docker run --name slt-gpu   --privileged=true --pid=host --ipc=host --net=host --cap-add=SYS_ADMIN  --cap-add=SYS_PTRACE -it -v /data/slt/:/Newdeeprec  -w /Newdeeprec --runtime=nvidia 155b56c7d050  /bin/bash
@@ -85,6 +86,7 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
   )
   ```
 - 启动命令：CUDA_VISIBLE_DEVICES=0,1 python -m hybridbackend.run python ranking/taobao/train.py /Newdeeprec/day_0.parquet
+- /usr/local/lib/python3.6/dist-packages/hybridbackend/tensorflow/plugins/deeprec/ev.py
 - 查看gpu利用率：watch -n 2 -d nvidia-smi
 - https://cdn.233xyx.com/1671162381712_317.zip
 - http://easyrec.oss-cn-beijing.aliyuncs.com/data/taobao/day_0.parquet
@@ -94,3 +96,9 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
 ### 磁盘预测测试
 - export TF_SSDHASH_ASYNC_COMPACTION=0
 - export LD_LIBRARY_PATH=/go_serving/app/controller/serving/tf_model/lib/:$LD_LIBRARY_PATH
+
+### NVIDIA docker 容器中devel runtime base三种文件的区别
+- base版本：该版本是从cuda9.0开始，包含了部署预构建cuda应用程序的最低限度（libcudart）。
+如果用户需要自己安装自己需要的cuda包，可以选择使用这个image版本，但如果想省事儿，则不建议使用该image，会多出许多麻烦。
+-runtime版本：该版本通过添加cuda工具包中的所有共享库开扩展基本image。如果使用多个cuda库的预构建应用程序，可使用此image。但是如果想借助cuda中的头文件对自己的工程进行编译，则会出现找不到文件的错误。
+- devel版本：通过添加编译器工具链，测试工具，头文件和静态库来扩展运行的image，使用此图像可以从源代码编译cuda应用程序

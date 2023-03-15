@@ -26,8 +26,9 @@ init = tf.global_variables_initializer()
 sess_config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
 #saver = tf.train.Saver([var], max_to_keep=2)
 saver2 = tf.train.Saver( max_to_keep=2)
-with tf.Session(config=sess_config) as sess:
-  sess.run([init])
+#下面注释的为保持ev的逻辑
+with tf.Session(config=sess_config) as sess: 
+#  sess.run([init])
   print('----------------------------')
 #  print(sess.run([emb]))
 #  print(sess.run([emb2]))

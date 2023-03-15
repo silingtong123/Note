@@ -319,6 +319,11 @@ shape为-1，将tensor转换为1维的tensor,类似数组
 - - -
 
 ### **tf.data.Dataset**
+- Dataset支持一类特殊的操作：Transformation。一个Dataset通过Transformation变成一个新的Dataset。通常我们可以通过Transformation完成数据变换，打乱，组成batch，生成epoch等一系列操作
+  - map: 接收一个函数，Dataset中的每个元素都会被当作这个函数的输入，并将函数返回值作为新的Dataset
+  - batch: 就是将多个元素组合成batch
+  - shuffle: shuffle的功能为打乱dataset中的元素
+  - repeat: repeat的功能就是将整个序列重复多次
 ```python
 
 # 将转换函数应用于此数据集, 
@@ -396,7 +401,12 @@ with tf.Session() as sess:
 ```
 数据集可用于将输入管道表示为元素的集合和作用于这些元素的转换的“逻辑计划”
 --- 
-
+### **DataSetV2**
+- flat_map(self, map_func): 运用map_func处理数据集中每个元素（flat:平铺）
+- interleave(self, map_func, cycle_length=AUTOTUNE,block_length=1,num_parallel_calls=None)
+  - cycle_length 并发处理的元素数量，为1时和flat_map功能一样，如果 `num_parallel_calls` 参数设置为 `tf.data.experimental.AUTOTUNE`，则 `cycle_length` 参数也标识最大并行度。
+  - block_length: 在循环到另一个输入元件之前，要从每个输入元素产生的连续元素数量。
+  - num_parallel_calls: 创建一个线程池，异步并行从同周期元素获取输入
 ### **tf.train.MonitoredTrainingSession**
 ```python
 tf.train.MonitoredTrainingSession(

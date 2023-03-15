@@ -52,16 +52,16 @@ class ResourceHandle { // <=====> ResourceHandleProto
 ///usr/local/lib/python3.6/dist-packages/tensorflow_core/python/ops/gen_
 ```
 Save和Restore Op的创建
-- gen_io_ops.restore -> 创建RestoreOp 源码中无处调用
-- Saver初始化中调用：_AddRestoreOps -> bulk_restore（其后遍历saveables并调用每个saveable的restore函数） -> io_ops.restore_v2 -> 创建RestoreV2 Op
+- gen_io_ops.restore -> 创建 RestoreOp 源码中无处调用
+- Saver初始化中调用：_AddRestoreOps -> bulk_restore（其后遍历saveables并调用每个saveable的restore函数） -> io_ops.restore_v2 <==> gen_io_ops.restore_v2(遍历每个saveable.specs的spec调用restore_v2 ) -> 创建 RestoreV2 Op
 - gen_io_ops.save ->创建 SaveOp
 
 SaveableObject: 用于保存和恢复可保存对象的基类
 - ReferenceVariableSaveable(saveable_object.SaveableObject)
   - restore -> state_ops.assign
 - ResourceVariableSaveable(saveable_object.SaveableObject)
-  - restore -> gen_array_ops.identity ->创建identity OP 
-  - restore -> gen_resource_variable_ops.assign_variable_op 创建AssignVariableOp 
+  - restore -> gen_array_ops.identity ->创建 identity OP 
+  - restore -> gen_resource_variable_ops.assign_variable_op 创建 AssignVariableOp 
 - EmbeddingVariableSaveable(saveable_object.SaveableObject)
     - restore ->gen_kv_variable_ops.kv_resource_import_v2 -> 创建"KvResourceImportV2" OP
 - HashTableSaveable(saveable_object.SaveableObject)
@@ -107,6 +107,16 @@ class SaveSpec:
       device: The device generating and consuming this tensor. Required if
         `tensor` is callable. Used to group objects to save by device.
     """
+
+class SaveSliceInfo:
+  def __init__(self,
+                   full_name=None,
+                   full_shape=None,
+                   var_offset=None,
+                   var_shape=None,
+                   save_slice_info_def=None,
+                   import_scope=None,
+                   var_full_name=None):      
 ```
 
 Variable.SaveSliceInfo: 有关如何将此变量保存为切片的信息 **Slice Tensor才有效？测试slice_spec为空**
@@ -167,10 +177,51 @@ BaseResourceVariable(variables.VariableV1)
 SaveOp: ->Compute -> SaveTensors  ->TensorSliceWriter
 - TensorSliceWriter(CreateTableTensorSliceBuilder) 通过** TensorSliceWriter::Builder返回
 - class TableBuilder : public TensorSliceWriter::Builder
-
-
+- file->Read(uint64 offset, size_t n, StringPiece* result, char* scratch) (file为指针类型)
+- ssize_t pread(intfd, void *buf, size_t count, off_t offset); 从文件开始+off_toffset 读取size_tcount个字符，放入buf
+- ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset); 从文件开始+off_toffset将buf中count个字符写入文件
 ```C++
-class TensorSliceWriter {
+s = StringPiece(*p, size_type length) //初始化一个StringPiece对象，不持有数据，只是一个指针和长度
+class TensorSliceReader { //用于从ckpt文件中读取数据, 先读footer 再读index block最后读取数据
+  const string filepattern_;
+  const OpenTableFunction open_function_;
+  std::vector<string> fnames_;
+  std::unordered_map<string, int> fname_to_index_;
+
+  // Guards the attributes below.
+  mutable mutex mu_;
+  mutable bool all_shards_loaded_ = false;
+  mutable std::vector<std::unique_ptr<Table>> sss_;
+  mutable std::unordered_map<string, TensorSliceSet*> tensors_;
+  mutable Status status_;
+}// SavedTensorSlices proto; SavedTensorSlices.data().data() <==> tensorProto
+
+class TensorSlice {
+
+}
+class Footer { // Footer封装了每个表格文件尾部存储的固定信息。
+ private:
+  BlockHandle metaindex_handle_;
+  BlockHandle index_handle_; 
+}
+
+class BlockHandle { //BlockHandle 是指向存储数据块或元块的文件范围的指针。
+ private:
+  uint64 offset_;
+  uint64 size_;  
+}
+
+class Block { //用指定的内容初始化块。32bit crc循环校验
+ private:
+  uint32 NumRestarts() const;
+
+  const char* data_;
+  size_t size_;
+  uint32 restart_offset_;  // Offset in data_ of restart array
+  bool owned_;             // Block owns data_[]  
+}
+
+class TensorSliceWriter { // //用于从ckpt文件中写入数据
 private:
   static const size_t kMaxMessageBytes = 1LL << 31;
   // Filling in the TensorProto in a SavedSlice will add the following
@@ -200,6 +251,12 @@ private:
 struct TableBuilder{
     TableBuilder::Rep* rep_;
     TableBuilder::WriteRawBlock() //文件中写入数据
+}
+
+class Table {//线程安全，
+  static Status Open(const Options& options, RandomAccessFile* file, 
+                     uint64 file_size, Table** table); // 打开fiel检索[0,file_size]的表
+   Rep* rep_;
 }
 
 struct TableBuilder::Rep {
