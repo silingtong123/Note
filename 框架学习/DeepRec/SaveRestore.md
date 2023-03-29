@@ -8,6 +8,18 @@
   - model.ckpt-7867424.meta
 - saver.export_meta_graph()/ tf.train.import_meta_graph：graph.util.convert_variables_to_constants 转variable为常量，保存为pb文件，常用语推理
 - tf.train.write_graph()/tf.Import_graph_def()：
+```python
+        builder = saved_model.builder.SavedModelBuilder(saved_model_path)
+        builder.add_meta_graph_and_variables(
+            session, [tag_constants.SERVING], signature_def_map=self.signature_def_map, clear_devices=True
+        )
+        # builder.save()
+        builder.save(as_text=True)
+```
+- SavedModelBuilder 保存格式
+    - saved_model.pbtxt / saved_model.pb
+    - ckpt和saved_model的index文件对应关系：variables/variables.index  --> model.ckpt-7867424.index
+    - ckpt和saved_model的index文件对应关系：variables/variables.data-00000-of-00001 --> model.ckpt-7867424.data-00000-of-00001
 
 
 Saver 保存加载恢复变量

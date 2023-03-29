@@ -404,9 +404,36 @@ with tf.Session() as sess:
 ### **DataSetV2**
 - flat_map(self, map_func): 运用map_func处理数据集中每个元素（flat:平铺）
 - interleave(self, map_func, cycle_length=AUTOTUNE,block_length=1,num_parallel_calls=None)
-  - cycle_length 并发处理的元素数量，为1时和flat_map功能一样，如果 `num_parallel_calls` 参数设置为 `tf.data.experimental.AUTOTUNE`，则 `cycle_length` 参数也标识最大并行度。
+  - cycle_length: 并发处理的元素数量，一般是并发处理文件的数量，为1时和flat_map功能一样，如果 `num_parallel_calls` 参数设置为 `tf.data.experimental.AUTOTUNE`，则 `cycle_length` 参数也标识最大并行度。
   - block_length: 在循环到另一个输入元件之前，要从每个输入元素产生的连续元素数量。
   - num_parallel_calls: 创建一个线程池，异步并行从同周期元素获取输入
+```python
+      dataset = dataset.apply(
+          tf.data.experimental.parallel_interleave(
+              lambda tmp_file: ParquetDataset(
+                  tmp_file,
+                  drop_remainder=True,
+                  batch_size=self.flags.parquet_batch,
+                  num_parallel_reads=self.flags.parallel_reads_per_file or dataset_ops.AUTOTUNE,
+                  fields=[DataFrame.Field(x, dtypes.int64, ragged_rank=0) for x in self.int_names]
+                  + [DataFrame.Field(x, dtypes.int32, ragged_rank=0) for x in self.int_names_32]
+                  + [DataFrame.Field(x, dtypes.int64, ragged_rank=1) for x in self.varint_names]
+                  + [DataFrame.Field(x, dtypes.double, ragged_rank=0) for x in self.float_names],
+              ).apply(
+                  to_sparse()
+              ),
+              cycle_length=self.flags.interleave_cycle,
+              block_length=self.flags.interleave_block,
+              num_parallel_calls = -1，
+          )
+      ) # 并行读取数据，并行度为num_parallel_calls，默认为-1，cycle_length表示同时读取个数，每个文件取block_length个元素，每个元素大小为self.flags.parquet_batch
+      dataset = dataset.batch(self.batch_size//self.flags.parquet_batch, drop_remainder=True,).map(
+          map_func=self.parquet_map,
+          num_parallel_calls=dataset_ops.AUTOTUNE,
+      )#  将该数据集取self.batch_size//self.flags.parquet_batch大小，parquet_map函数将所有元素reshape为一维，此时真实的 batch_size大小为self.batch_size//self.flags.parquet_batch * self.flags.parquet_batch
+    
+```
+
 ### **tf.train.MonitoredTrainingSession**
 ```python
 tf.train.MonitoredTrainingSession(
