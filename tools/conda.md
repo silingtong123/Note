@@ -1,0 +1,9 @@
+- 下载：https://www.anaconda.com/download#downloads
+- bash Anaconda3-2023.03-1-Linux-x86_64.sh
+- 创建虚拟环境：conda create -n your_env_name python=X.X
+- 激活虚拟环境：source activate your_env_name
+- 退出虚拟环境：source deactivate your_env_name
+- 删除虚拟环境：conda remove -n your_env_name(虚拟环境名称) --all    
+- 删除虚拟环境的某个包：conda remove --name your_env_name package_name
+- 查看存在的虚拟环境：conda env list
+- 更新anaconda/conda: conda update anaconda/conda

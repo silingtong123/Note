@@ -37,6 +37,7 @@
   - lsof -i:8898
   - 查看端口的所有连接： netstat -ntap | grep 4973
 - 查看内存：free -h 转换为Mb或者Gb
+- yum install lrzsz
 - Find命令
   - 递归查看：find . -name “*.txt”
   - 非递归查看： find . -name “*.txt” -maxdepth 1
@@ -81,13 +82,37 @@
  - 添加用户
    - useradd username
    - passwd 123456
-- GPU命令
-  - Nvida GPU Cuda/AMD GPU  ROCm
+- 查看GPU信息
+  - Nvida公司：GPU Cuda/AMD公司：GPU  ROCm
   - watch -n 2 -d nvidia-smi
   - 查看gpu通信通道：nvidia-smi -L 
   - 查看gpu互联：nvidia-smi topo -m
   - lspci
 
+- 查看CPU信息:lscpu（物理核数= Core(s) per socket * CPU socket(s)）
+```bash
+Architecture:        # 架构
+CPU op-mode(s):      # CPU 运行模式
+Byte Order:          # 字节序
+CPU(s):              # 逻辑 CPU 核数
+On-line CPU(s) list: # 在线 CPU 列表
+Thread(s) per core:  # 每个核的线程数
+Core(s) per socket:  # 每个 CPU 插槽核数/每颗物理 CPU 核数
+CPU socket(s):       # CPU 插槽数
+NUMA node(s):        # NUMA（Non-Uniform Memory Access）节点
+Vendor ID:           # CPU 厂商 ID
+CPU family:          # CPU 系列
+Model:               # 型号
+Model name:          # 型号名称
+Stepping:            # 步进
+CPU MHz:             # CPU 主频
+CPU max MHz:         # CPU 最大主频
+CPU min MHz:         # CPU 最小主频
+Virtualization:      # CPU 支持的虚拟化技术
+L1d cache:           # 一级缓存（CPU 的 L1 数据缓存）
+L1i cache:           # 一级缓存（CPU 的 L1 指令缓存）
+L2 cache:            # 二级缓存
+```
 #### 同步，异步，并行和并发
 
 - 同步：是指一个进程在执行某个请求的时候,如果该请求需要一段时间才能返回信息,那么这个进程会一直等待下去,直到收到返回信息才继续执行下去

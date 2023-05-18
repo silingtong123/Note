@@ -63,9 +63,21 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
 - 查看镜像： docker images | grep
 - 删除镜像：docker rmi image_name
 - 重命名镜像：docker tag 1417b43a3ff5 faster-rcnn-3d:v1
+- 查看容器启动命令：docker ps -a --no-trunc | grep container_name   # 通过docker --no-trunc参数来详细展示容器运行命令
+- 指定显卡：--runtime=nvidia  -e NVIDIA_VISIBLE_DEVICES=1,2, 此时内部只能看到两张卡，但是指定 CUDA_VISIBLE_DEVICES=i 会直接使用外部的第i张卡   
+- export NVIDIA_VISIBLE_DEVICES=
+- 指定使用cpu_allocator: export TF_DISABLE_EV_ALLOCATOR=1
+- 用户设置 CUDA_VISIBLE_DEVICES=3,2,1,0，那么deeprec中看到的编号0,1,2,3对应的物理GPU是3,2,1,0。
+- 172.16.11.2
 
 ### 单机多卡测试
-- 启动容器: docker run --name slt-gpu   --privileged=true --pid=host --ipc=host --net=host --cap-add=SYS_ADMIN  --cap-add=SYS_PTRACE -it -v /data/slt/:/Newdeeprec  -w /Newdeeprec --runtime=nvidia 155b56c7d050  /bin/bash
+- 启动容器: 
+  - docker run --name slt-gpu   --privileged=true --pid=host --ipc=host --net=host --cap-add=SYS_ADMIN  --cap-add=SYS_PTRACE -it -v /data/slt/:/Newdeeprec  -w /Newdeeprec --runtime=nvidia 155b56c7d050  /bin/bash
+  - docker run --name slt-robin-262-8c-cpuset   --privileged=true --pid=host --ipc=host --net=host --cap-add=SYS_ADMIN  --cap-add=SYS_PTRACE -it -v /home/slt/:/Newdeeprec --cpuset-cpus=0-7 --memory=57g -w /Newdeeprec -e NVIDIA_VISIBLE_DEVICES=2 --runtime=nvidia metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/meta-rec/robin-hb:v262  /bin/bash  
+  - --privileged=true: 使容器root权限变成真正的root权限，否则就只能等于外部的普调用户权限，可以看到很多host上的设备比如设置privileged=true能看到NVIDIA_VISIBLE_DEVICES指定外的显卡
+  - --pid=host 容器的PID命名空间
+  - --ipc=host  docker中的进程要与宿主机使用共享内存通信
+  - --net=host
 - 设置代理：
   - export http_proxy=http://10.0.24.120:7895
   - export https_proxy=http://10.0.24.120:7895
@@ -84,6 +96,12 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
         partition_count =hb.context.world_size，
         partition_index =hb.context.rank
   )
+
+        if flags.is_hb_training:
+            hooks=[]
+            hooks.append(tf.train.StopAtStepHook(last_step=100))
+            hooks.append(tf.train.ProfilerHook(save_steps=100, output_dir=self.__hb_training))
+            return tf.train.MonitoredTrainingSession(master="", hooks= hooks, save_checkpoint_steps=1000000, checkpoint_dir=self.__hb_training, config=sess_config)  
   ```
 - 启动命令：CUDA_VISIBLE_DEVICES=0,1 python -m hybridbackend.run python ranking/taobao/train.py /Newdeeprec/day_0.parquet
 - /usr/local/lib/python3.6/dist-packages/hybridbackend/tensorflow/plugins/deeprec/ev.py
@@ -102,3 +120,7 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
 如果用户需要自己安装自己需要的cuda包，可以选择使用这个image版本，但如果想省事儿，则不建议使用该image，会多出许多麻烦。
 -runtime版本：该版本通过添加cuda工具包中的所有共享库开扩展基本image。如果使用多个cuda库的预构建应用程序，可使用此image。但是如果想借助cuda中的头文件对自己的工程进行编译，则会出现找不到文件的错误。
 - devel版本：通过添加编译器工具链，测试工具，头文件和静态库来扩展运行的image，使用此图像可以从源代码编译cuda应用程序
+
+### docker绑核
+- docker inspect dockerid|grep -i pid 查看容器核数
+- taskset -pc 0-31  pid

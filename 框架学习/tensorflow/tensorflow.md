@@ -22,6 +22,14 @@ TF会给每一个核心概念设计一个构建类
 - Executor 
   - Executor运行一个图的计算
 
+### 优化器
+
+```python
+grads_and_vars = _optimizer.compute_gradients(loss, var_list=var_list)
+_optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+
+#上面两步等价于 _optimizer.minimize(loss, global_step=global_step, var_list=var_list) 
+```
 
 #### 切片
 - 高维矩阵理解：
