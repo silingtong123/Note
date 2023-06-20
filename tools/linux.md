@@ -23,6 +23,7 @@
 #### 常用命令
 - 查看系统信息：uname -a 
 - 确定系统是centos还是ubuntu,前者是yum，后者是apt-get
+- scp  base_ctr_galaxy_.meta  10.11.11.251:/usr/local/webserver/data/base_ctr_galaxy_.meta
 - 查看系统版本
   - centos版本：rpm -q centos-release
   - uabanu版本：cat /proc/version
@@ -88,6 +89,7 @@
   - 查看gpu通信通道：nvidia-smi -L 
   - 查看gpu互联：nvidia-smi topo -m
   - lspci
+  - gpu debug信息： NCCL_DEBUG=INFO 和 NCCL_DEBUG_SUBSYS=ALL 
 
 - 查看CPU信息:lscpu（物理核数= Core(s) per socket * CPU socket(s)）
 ```bash
@@ -120,3 +122,11 @@ L2 cache:            # 二级缓存
 - 并发：把任务在不同的时间点交给处理器进行处理。在同一时间点,任务并不会同时运行
 - 并行：把每一个任务分配给每一个处理器独立完成。在同一时间点,任务一定是同时运行。
 - 当程序中写下多进程或多线程代码时，这意味着的是并发而不是并行， 并行与否程序员无法控制，只能让操作系统决定。 一定吗？
+
+#### gcc升级
+```shell
+apt-cache search gcc
+sudo apt-get install gcc-6
+dpkg -l | grep gcc
+#即可安装
+```

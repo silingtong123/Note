@@ -64,6 +64,13 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
 - 删除镜像：docker rmi image_name
 - 重命名镜像：docker tag 1417b43a3ff5 faster-rcnn-3d:v1
 - 查看容器启动命令：docker ps -a --no-trunc | grep container_name   # 通过docker --no-trunc参数来详细展示容器运行命令
+- 查看容器磁盘： docker system df
+- overlay2过大问题排查：
+  - cd /var/lib/docker/overlay2
+  - du -h --max-depth=1 ，假设最大的为6b6572a745dccd415280c6b4eacdfb531c61c5f3618be64dc6e20f00b72d6951
+  - 查看占用空间的pid，以及对应的容器名称： docker ps -q | xargs docker inspect --format '{{.State.Pid}}, {{.Name}}, {{.GraphDriver.Data.WorkDir}}' | grep "6b6572a745dccd415280c6b4eacdfb531c61c5f3618be64dc6e20f00b72d6951"
+
+
 - 指定显卡：--runtime=nvidia  -e NVIDIA_VISIBLE_DEVICES=1,2, 此时内部只能看到两张卡，但是指定 CUDA_VISIBLE_DEVICES=i 会直接使用外部的第i张卡   
 - export NVIDIA_VISIBLE_DEVICES=
 - 指定使用cpu_allocator: export TF_DISABLE_EV_ALLOCATOR=1
@@ -76,11 +83,12 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
   - docker run --name slt-robin-262-8c-cpuset   --privileged=true --pid=host --ipc=host --net=host --cap-add=SYS_ADMIN  --cap-add=SYS_PTRACE -it -v /home/slt/:/Newdeeprec --cpuset-cpus=0-7 --memory=57g -w /Newdeeprec -e NVIDIA_VISIBLE_DEVICES=2 --runtime=nvidia metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/meta-rec/robin-hb:v262  /bin/bash  
   - --privileged=true: 使容器root权限变成真正的root权限，否则就只能等于外部的普调用户权限，可以看到很多host上的设备比如设置privileged=true能看到NVIDIA_VISIBLE_DEVICES指定外的显卡
   - --pid=host 容器的PID命名空间
-  - --ipc=host  docker中的进程要与宿主机使用共享内存通信
+  - --ipc=host  docker中的进程要与宿主机使用共享内存通信,否则docker容易出现shm不够，默认是64M
   - --net=host
+  - docker run -it  --name=slt-llama-0525 --volume /data/slt:/workdir -v /oss:/oss -w /workdir --ipc=host --network host -P  metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/metaops/llm:1.1 /bin/bash
 - 设置代理：
-  - export http_proxy=http://10.0.24.120:7895
-  - export https_proxy=http://10.0.24.120:7895
+  - export http_proxy=http://10.0.24.95:8888
+  - export http_proxy=http://10.0.24.95:8888
 - 取消代理(单机多卡测试，需要取消代理)：
   - unset http_proxy
   - unset https_proxy
@@ -124,3 +132,14 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
 ### docker绑核
 - docker inspect dockerid|grep -i pid 查看容器核数
 - taskset -pc 0-31  pid
+
+### A100卡安装出错
+- failed call to cuInit: CUDA_ERROR_SYSTEM_NOT_READY: system not yet initialized
+- 缺少安装nvidia-fabricmanager：https://forums.developer.nvidia.com/t/error-802-system-not-yet-initialized-cuda-11-3/234955/3
+- 安装参考：https://www.volcengine.com/docs/6419/73634
+- 启动：
+  - systemctl start nvidia-fabricmanager 开启服务
+  - systemctl status nvidia-fabricmanager 状态查看
+  - systemctl enable nvidia-fabricmanager 开机启动
+### nvidia driver安装
+- https://www.alibabacloud.com/help/zh/elastic-gpu-service/latest/install-a-gpu-driver-on-a-linux-gpu-accelerated-compute-optimized-instance?spm=a2c63.p38356.0.0.67786b206kLbGI#concept-ecy-qrz-wgb
