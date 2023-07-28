@@ -76,16 +76,49 @@ Dockerfile 一般分为四部分：基础镜像信息、维护者信息、镜像
 - 指定使用cpu_allocator: export TF_DISABLE_EV_ALLOCATOR=1
 - 用户设置 CUDA_VISIBLE_DEVICES=3,2,1,0，那么deeprec中看到的编号0,1,2,3对应的物理GPU是3,2,1,0。
 - 172.16.11.2
-
+- 查看GPU信息
+  - Nvida公司：GPU Cuda/AMD公司：GPU  ROCm
+  - watch -n 2 -d nvidia-smi
+  - 查看gpu通信通道：nvidia-smi -L 
+  - 查看gpu互联：nvidia-smi topo -m
+  - lspci
+  - gpu debug信息： NCCL_DEBUG=INFO 和 NCCL_DEBUG_SUBSYS=ALL
+  - 设置网卡 NCCL_SOCKET_IFNAME=eth0  export NCCL_IB_DISABLE=1
+  
 ### 单机多卡测试
 - 启动容器: 
-  - docker run --name slt-gpu   --privileged=true --pid=host --ipc=host --net=host --cap-add=SYS_ADMIN  --cap-add=SYS_PTRACE -it -v /data/slt/:/Newdeeprec  -w /Newdeeprec --runtime=nvidia 155b56c7d050  /bin/bash
-  - docker run --name slt-robin-262-8c-cpuset   --privileged=true --pid=host --ipc=host --net=host --cap-add=SYS_ADMIN  --cap-add=SYS_PTRACE -it -v /home/slt/:/Newdeeprec --cpuset-cpus=0-7 --memory=57g -w /Newdeeprec -e NVIDIA_VISIBLE_DEVICES=2 --runtime=nvidia metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/meta-rec/robin-hb:v262  /bin/bash  
+```shell
+#启动容器，不限制cpu和gpu
+docker run --name slt-gpu   --privileged=true --pid=host \
+--ipc=host --net=host \
+--cap-add=SYS_ADMIN  \
+--cap-add=SYS_PTRACE \
+-it -v /data/slt/:/Newdeeprec  -w /Newdeeprec \
+--runtime=nvidia 155b56c7d050  /bin/bash
+
+#启动容器，限制cpu 0-7和gpu 2
+docker run --name slt-robin-262-8c-cpuset \
+--privileged=true --pid=host \
+--ipc=host --net=host --cap-add=SYS_ADMIN  \
+-it -v /home/slt/:/Newdeeprec --cpuset-cpus=0-7 --memory=57g -w /
+Newdeeprec -e NVIDIA_VISIBLE_DEVICES=2 --runtime=nvidia  \ metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/meta-rec/robin-hb:v262  /bin/bash
+
+#启动大模型
+docker run -it  --name=slt-llm-0626 \
+--volume /data/slt:/workdir -v /oss:/oss -w /workdir \
+--ipc=host --network host -P  \
+--device=/dev/infiniband/rdma_cm \
+--device=/dev/infiniband/uverbs0 \
+--device=/dev/infiniband/uverbs1 \
+--ulimit memlock=-1 \
+metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/metaops/llm:1.1 /bin/bash
+```
+- 参数解释：
   - --privileged=true: 使容器root权限变成真正的root权限，否则就只能等于外部的普调用户权限，可以看到很多host上的设备比如设置privileged=true能看到NVIDIA_VISIBLE_DEVICES指定外的显卡
   - --pid=host 容器的PID命名空间
   - --ipc=host  docker中的进程要与宿主机使用共享内存通信,否则docker容易出现shm不够，默认是64M
   - --net=host
-  - docker run -it  --name=slt-llama-0525 --volume /data/slt:/workdir -v /oss:/oss -w /workdir --ipc=host --network host -P  metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/metaops/llm:1.1 /bin/bash
+  - -P :是容器内部端口随机映射到主机的端口, -p ip:hostPort:containerPort容器内部端口绑定到指定的主机端口
 - 设置代理：
   - export http_proxy=http://10.0.24.95:8888
   - export http_proxy=http://10.0.24.95:8888

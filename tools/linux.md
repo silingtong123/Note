@@ -22,6 +22,9 @@
 3. 浏览器访问该主机的地址：http://IP:端口号/
 #### 常用命令
 - 查看系统信息：uname -a 
+- linux光标显示和隐藏：
+  - echo -e "\033[?25h" 显示
+  - echo -e "\033[?25l" 隐藏
 - 确定系统是centos还是ubuntu,前者是yum，后者是apt-get
 - scp  base_ctr_galaxy_.meta  10.11.11.251:/usr/local/webserver/data/base_ctr_galaxy_.meta
 - 查看系统版本
@@ -39,6 +42,9 @@
   - 查看端口的所有连接： netstat -ntap | grep 4973
 - 查看内存：free -h 转换为Mb或者Gb
 - yum install lrzsz
+- ifconfig 安装
+  -  yum install net-tools
+  -  apt-get install net-tools
 - Find命令
   - 递归查看：find . -name “*.txt”
   - 非递归查看： find . -name “*.txt” -maxdepth 1
@@ -83,14 +89,9 @@
  - 添加用户
    - useradd username
    - passwd 123456
-- 查看GPU信息
-  - Nvida公司：GPU Cuda/AMD公司：GPU  ROCm
-  - watch -n 2 -d nvidia-smi
-  - 查看gpu通信通道：nvidia-smi -L 
-  - 查看gpu互联：nvidia-smi topo -m
-  - lspci
-  - gpu debug信息： NCCL_DEBUG=INFO 和 NCCL_DEBUG_SUBSYS=ALL 
-
+- 配置文件：
+  - ~/.bashrc, ~/.bash_file这两个看到～这个符合，应该明白，这是宿主目录下的，即里面的环境变量也叫shell变量，是局部的，只对特定的shell有效
+  - /etc/profile , /etc/profile.d，前面的是文件，后面一看也就明白.d表示目录， /etc/profile里面的变量是全局的，对所有用户的shell有效。
 - 查看CPU信息:lscpu（物理核数= Core(s) per socket * CPU socket(s)）
 ```bash
 Architecture:        # 架构

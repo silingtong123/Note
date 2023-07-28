@@ -7,10 +7,6 @@
 --include="localhost:1,3,5,7" #使用1,3,5,7显卡
 # CUDA_VISIBLE_DEVICES=0,2,4,6 torchrun --nproc_per_node=4指定显卡
 #  torchrun --nproc_per_node=4 默认使用0-3
-
-# 保证train_batch_size = train_micro_batch_size_per_gpu * gradient_accumulation * number of GPUs
-# 可以在deepspeed.config配置train_micro_batch_size_per_gpu，gradient_accumulation_steps，train_batch_size为auto
-
 ```
 
 ### 3090
@@ -26,13 +22,25 @@
 - 报错信息： Something went wrong Expecting value: line 1 column 
 - 服务启动环境关闭代理即可
 
-### 节省显存
+### 一些报错
+- AssertionError: Check batch related parameters. train_batch_size is not equal to micro_batch_per_gpu * gradient_acc_step * world_size 64 != 2 * 1 * 8
+  - 必须保证：train_batch_size = train_micro_batch_size_per_gpu * gradient_accumulation * number of GPUs，deepspeed_config.json可以配置train_micro_batch_size_per_gpu，gradient_accumulation_steps，train_batch_size为auto
+- ValueError: Found `optimizer` configured in the DeepSpeed config, but no `scheduler`. Please configure a scheduler in the DeepSpeed config.
+  - deepspeed_config.json可以配置`scheduler` . Note: 为什么不配置有时会提示，有时没有.是因为使用deepspeed启动和torchrun启动的区别吗？
+
+
+### GPU OOM, 如何节省显存，优化显存
 - model.gradient_checkpointing_enable(): 过用计算换取内存来工作。检查点部分不是存储整个计算图的所有中间激活以进行反向计算，而是不保存中间激活，而是在反向过程中重新计算它们。它可以应用于模型的任何部分
 - ZeRO stage 2
 - ZeRO stage 2 + `offload_optimizer`
 - stage 3
 - `offload_param` to `cpu`
 - `offload_optimizer` to `cpu`
+
+如果仍然内存不足，您可以尝试调整以下内容：
+- 减少传递到batch_size TrainingArguments
+- 减少传递到gradient_accumulation_steps TrainingArguments
+- 在文件zero3_config.json中，减小stage3_max_live_parameters和stage3_max_reuse_distance的大小 
 
 
 ### 单节点
@@ -77,10 +85,11 @@ https://zhuanlan.zhihu.com/p/613196255
 - 流水线并行：基于Gpipe。核心思想是：在模型并行的基础上，进一步引入数据并行的办法，即把原先的数据再划分成若干个batch，送入GPU进行训练
   - 切分micro-batch，在mini-batch上再划分的数据，叫micro-batch，将mini-batch划分为M个，而单块GPU上个micro-batch做一次forward和backward的时间为$t_{fb}=t_f+t_b$：解决GPU空转的问题
     - 总时间计算K块GPU的面积，宽为$K$,长为$(K+M-1)t_{fb}$,面积为$K*(K+M-1)t_{fb}$
-    - 单块实际运行时间为$M*f_{fb}$,$K$块GPU运行时间为$M*f_{fb}$
+    - 单块实际运行时间为$M*f_{fb}$, 一块GPU运行时间为$M*f_{fb}$, $K$块GPU运行时间为$K*M*f_{fb}$
     - 空闲时间为$K*(K-1)t_{fb}$, 空闲占比$O(\frac{K-1}{K+M-1})$, 当$M>=4K$时，空转占比会小于等于20%
-  - re-materialization（active checkpoint：解决GPU的内存问题。几乎不存中间结果，等到backward的时候，再重新算一遍forward，只保存来自上一块的最后一层输入z，其余的中间结果我们算完就废
-    - 记起始输入为$N$（即mini-batch的大小),中间变量大小为$\frac{N}{M}*\frac{L}{K}*d$,每块GPU峰值时刻的空间复杂度为$O(N+\frac{N}{M}*\frac{L}{K}*d)$,和单独的模型并行$O(N*\frac{L}{K}*d)$比较，当L变大时，对GPU内存的压力显著减小
+  - re-materialization（active checkpoint，时间换空间）：解决GPU的内存问题。每块GPU上，我们只保存来自上一块的最后一层输入z，其余的中间结果我们算完就废。等到backward的时候再由保存下来的z重新进行forward来算出, $Z=Wx+b$,$loss=f(Z,Y)$, Y为真实值，Z为softmax前的输出，一般作用为求W梯度，即此时Z为中间值可不保存每次通过forward得到Z的大小：模型每一层都会存Z,每层Z的大小为 N* d, d为hidden_layer大小，一共有L层，所以最后所有中间结果的大小为N * d *L，每个显卡的中间结果的大小为N * d *L/K
+    - 记起始输入为$N$（即mini-batch的大小，M为micro-batch的数目),每个miro-batch中间变量大小为$\frac{N}{M}*\frac{L}{K}*d$,每块GPU峰值时刻的空间复杂度为需要加上输入N为$O(N+\frac{N}{M}*\frac{L}{K}*d)$,和单独的模型并行$O(N*\frac{L}{K}*d)$比较，当L变大时，对GPU内存的压力显著减小
+    - 每块GPU峰值时刻存储大小 = 每块GPU上的输入数据大小 + 每块GPU在forward过程中的中间结果大小
 
 ### 数据并行
 水线并行并不特别流行，主要原因是模型能否均匀切割，影响了整体计算效率，这就需要算法工程师做手调
@@ -133,13 +142,14 @@ torch.distributed.all_reduce（input_tensor，reduce_op = ReduceOp.SUM）
       - 参数W只在做forward和backward的那一刻才用到
   - 剩余状态（residual states）: 除了模型状态之外的显存占用，包括激活值（activation）、各种临时缓冲区（buffer）以及无法使用的显存碎片（fragmentation）
 - ZERO： 每个显卡，只存1/N的数据
-  - ZERO-1: $P_{os}$ 将模型状态中的Adam状态分片->单个显卡 4X + 12X/N,N无限大，4X, 不会增加通信量, 以下数据为了方便，没有换算为byte
+  - 传统数据并行DPP: 每一次计算完梯度后需要使用ALL-Reduce来计算梯度的均值，使用RING-Reduce,通信量近似为2 X
+  - ZERO-1: $P_{os}$ 将模型状态中的Adam状态分片->单个显卡 4X + 12X/N,N无限大时，单卡存储接近4X, zero1可做到不会增加通信量, 此时和zero2类似，不保存完整的梯度，但如果按照zero1的立意，只将os切分的话，则会增加1.5倍通信量，以下数据为了方便，没有换算为byte
     - 每块GPU上存一份完整的参数W。将一个batch的数据分成3份，每块GPU各吃一份，做完一轮foward和backward后，各得一份梯度
-    - 对梯度进行AllReduce，2 * (N-1) *X/N ， 可近似看作2X
+    - 为了得到完整梯度，对梯度进行AllReduce，2 * (N-1) *X/N ， 可近似看作2X（可以不得到完整梯度，只是将对应一部分梯度收集，只需要使用scatter-reduce， 此时虽然使用了完整梯度的大小，但是实际上可只维护和os对应那部分梯度，通信量为X）
     - W的更新由optimizer states和梯度决定，由于每块GPU上只保管部分optimizer states，因此只能将相应的W进行更新
     - 此时，每块GPU上都有部分W没有完成更新,所以我们需要对W做一次All-Gather, (N-1) *X/N, 可近似看作X
     - ZERO-1的通信数据为3X，比DPP的2X 提高了1.5倍，但是单卡存储能显著降低
-  - ZERO-2: $P_{os} +P_g$ 将模型状态中的Adam状态，模型梯度分片->单个显卡 2X+14X/N,N无限大，2X，不会增加通信量
+  - ZERO-2: $P_{os} +P_g$ 将模型状态中的Adam状态，模型梯度分片->单个显卡 2X+14X/N, N无限大时，单卡存储接近2X，zero2不会增加通信量
     - 每块GPU上存一份完整的参数W。将一个batch的数据分成3份，每块GPU各吃一份，做完一轮foward和backward后，算得一份(完整的?）梯度
     - 对梯度做一次Reduce-Scatter，保证每个GPU上所维持的那块梯度是聚合梯度, (N-1) *X/N, 可近似看作X
     - 每块GPU用自己对应的optimizer states和梯度去更新相应的W。更新完毕后，每块GPU维持了一块更新完毕的W。同理，对W做一次All-Gather,  (N-1) *X/N, 可近似看作X
@@ -203,3 +213,50 @@ NLP中基于Prompt的fine-tune
   - 预训练最好的方式（？）是将长文章按照 seq_len（2048）作分割，将切割后的向量喂给模型做训练
 - 模型结构：为了加快模型的训练速度，通常会在 decoder 模型中加入一些 tricks 来缩短模型训练周期
   - 大部分加速 tricks 都集中在 Attention 计算上
+
+### use_int8_training和deepspeed只能二选一，不可同时使用(BELLE提到)
+-  A device map needs to be passed to run convert models into mixed-int8 format. Please run`.from_pretrained` with `device_map='auto'
+   -  使用int8量化时，必须设置device_map="auto", 否则会出现如上错误；当int8量化和zero3混用时会出现如下错误
+-  DeepSpeed Zero-3 is not compatible with `low_cpu_mem_usage=True` or with passing a `device_map`.
+   -  zero3和low_cpu_mem_usage不兼容，当low_cpu_mem_usage设置为true时会出现如上错误，如果设置了device_map也会导致low_cpu_mem_usage自动设置为true。
+-  low_cpu_mem_usage默认为False,此时将模型创建为空壳，然后仅在加载预训练权重时具体化其参数，设置 True 将有利于 LLM 加载时间和 RAM 消耗
+   -  设置为False时， 刚加载模型后所有权重shape都为0，此时模型为空壳
+   -  设置为True时，刚加载模型后所有权重shape都为真实值
+```py
+    print("Setup Model")
+    model = transformers.LlamaForCausalLM.from_pretrained(
+        model_args.model_path,
+        load_in_8bit=True,
+        cache_dir=training_args.cache_dir,
+        device_map = "auto"
+    )
+    for k, v in model.named_parameters():
+        print(k, v.shape)
+```
+
+### DeepSpeed 流水线并行
+- 流水线并行性要求将模型表示为层序列
+```python
+net = nn.Sequential(
+    nn.Linear(in_features, hidden_dim),
+    nn.ReLU(inplace=True),
+    nn.Linear(hidden_dim, out_features)
+)
+from deepspeed.pipe import PipelineModule
+net = PipelineModule(layers=net, num_stages=2)
+```
+- LayerSpec 能延迟构造，节省内存，原始的流水线并行具有 16 个 GPU 的机器的本地 CPU 内存必须是模型大小的 16 倍？？（真的吗？）
+```python
+from deepspeed.pipe import PipelineModule, LayerSpec
+class AlexNetPipe(PipelineModule):
+    def __init__(self, num_classes=10, **kwargs):
+        self.num_classes = num_classes
+        specs = [
+            LayerSpec(nn.Conv2d, 3, 64, kernel_size=11, stride=4, padding=2),
+            LayerSpec(nn.ReLU, inplace=True),
+            ...
+            LayerSpec(nn.ReLU, inplace=True),
+            LayerSpec(nn.Linear, 4096, self.num_classes),
+        ]
+        super().__init__(layers=specs, loss_fn=nn.CrossEntropyLoss(), **kwargs)
+```
