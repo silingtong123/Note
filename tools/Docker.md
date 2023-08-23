@@ -103,6 +103,7 @@ docker run --name slt-robin-262-8c-cpuset \
 -it -v /home/slt/:/Newdeeprec --cpuset-cpus=0-7 --memory=57g -w /
 Newdeeprec -e NVIDIA_VISIBLE_DEVICES=2 --runtime=nvidia  \ metaapp-registry-vpc.cn-beijing.cr.aliyuncs.com/meta-rec/robin-hb:v262  /bin/bash
 
+# 阿里推荐，启动容器显示指定显卡 --gpus="device=0,1,2"
 #启动大模型
 docker run -it  --name=slt-llm-0626 \
 --volume /data/slt:/workdir -v /oss:/oss -w /workdir \

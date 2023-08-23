@@ -13,6 +13,47 @@ torch.save(model.state_dict(), 'model_state_dict1.pth')
 model.load_state_dict(state_dict)
 ```
 
+### tensor初始化
+```python
+import torch
+#定义一个Tensor矩阵
+a = torch.Tensor([[1, 2], [3, 4],[5, 6], [7, 8]])
+
+# 迁移至gpu
+a.cuda()
+
+#定义一个全0矩阵
+b = torch.zeros((4, 2))
+#定义一个全1矩阵
+c = torch.ones(2,4)
+
+# tensor->numpy
+c_n = c.numpy()
+
+# numpy->tensor
+c_n_t = torch.from_numpy(c_n)
+
+
+w = torch.zeros(3, 5)
+
+#均匀分布生成值
+torch.nn.init.uniform_(w, a=10, b=15)
+
+#从给定均值和标准差的正态分布N(mean, std)中生成值
+torch.nn.init.normal_(w, mean=0, std=0.1)
+
+#单位矩阵
+torch.nn.init.eye_(w)
+
+#其他
+torch.nn.init.constant_(w, val=0.6)
+torch.nn.init.zeros_(w)
+torch.nn.init.ones_(w)
+torch.nn.init.xavier_normal_(w)
+torch.nn.init.xavier_uniform_(w)
+torch.nn.init.kaiming_normal_(w)
+torch.nn.init.kaiming_uniform_(w)
+```
 ### **model.load_state_dict**
 - 该函数就是用于将预训练的参数权重加载到新的模型之中
 - 当strict=True,要求预训练权重层数的键值与新构建的模型中的权重层数名称完全吻合；如果新构建的模型在层数上进行了部分微调，则上述代码就会报错：说key对应不上
@@ -180,6 +221,30 @@ r"""
 - 类似reshape, 但是reshape后再修改 tensor 的值不确定是否会修改原始 tensor 的值，而view只是切换了视角，共享一份内存，修改view后的内容一定会将原tensor的内存内容修改。
 -  tensor 连续条件的时候 tensor.reshape() 和 tensor.view() 效果相同; 当不满足时, tensor.reshape() 效果与 tensor.clone().view() 相同.
 
+#### **torch.dot**
+两个矩阵中对应元素各自相乘之和又称内积，是一个标量, 为A在B上投影长度乘上B的长度
+
+### torch.matmul
+- (3,4)*(4,5) = (3,5)普通的矩阵乘法，把最后两位作为矩阵乘，其余维度为batch_size
+- 如果两个tensor都是一维的，则为点乘运算，即每个元素对应相乘求和
+
+### torch.mm
+- 是两个矩阵相乘，即两个二维的张量相乘,但是如果维度超过二维，则会报错
+
+### torch.bmm
+- 是两个矩阵相乘，即两个二维的张量相乘, 加了一个batch_size维度，并且要两个Tensor的batch_size相等
+
+### nn.Conv1d(in_channels, out_channels, kernel_size)
+- 输入为[ batch_size, in_channels, len_1 ], in_channels保持一致就行
+- 输出为[ batch_size, out_channels, len_2]， len_2为len_1通过卷积核[kernel_size]得到
+- 卷积核大小为(kernel_size，in_channels), out_channels为卷积核个数
+### torch.nn.Conv2d(channels, output, height_2, width_2 )
+- 输入[ batch_size, channels, height_1, width_1 ] ,必须channels保持一致
+- 输出为[batch_size,output, height_3, width_3 ], 输出的channel和output一致，其中output指卷积核个数，默认stride 为1，[height_3, width_3] 是[height_1, width_1]使用卷积核[height_2, width_2]的大小
+
+### torch.permute
+- 转置不同的维度
+
 ### tensor.contiguous
 - Tensor多维数组底层实现是使用一块连续内存的1维数组,Tensor在元信息里保存了多维数组的形状，在访问元素时，通过多维度索引转化成1维数组相对于数组起始位置的偏移量即可找到对应的数据
 - 某些Tensor操作（如transpose、permute、narrow、expand）与原Tensor是共享内存中的数据，不会改变底层数组的存储，但原来在语义上相邻、内存里也相邻的元素在执行这样的操作后，在语义上相邻，但在内存不相邻，即不连续了（is not contiguous）
@@ -198,7 +263,7 @@ state_dict对象存储模型的可学习参数，即权重和偏差，并且可�
 - 但是在训练模型的时候又希望这些层起作用，所以又要重新将这些层设置回来，这时候就需要用到**model.train()**模式
 
 ### nn.Linear(in_features, out_features) 
-- (bs, in_features) * (in_features, out_features) +(1, out_features),对应$y= XW + b$
+- (bs, in_features) * (in_features, out_features) +(1, out_features),对应$y= XW + b$, weight shape实际上是(out_features,in_features),内部调用的是X乘以weight的转置
 
 ### arange(start=0, end, step=1,...)
 - 返回大小为(end-start)/step)大小的一维张量，其值界于[start, end), 以step为步长

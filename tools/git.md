@@ -25,11 +25,12 @@ ssh-keygen -t rsa -C "lingtong.si@appshahe.com"
     - git config --global --unset http.proxy
     - git config --global --unset https.proxy
   - 添加代理：
+    - git config --global  http.proxy http://10.0.24.95:8888
     - export http_proxy=http://10.0.24.95:8888
     - export https_proxy=http://10.0.24.95:8888
 
 - OpenSSL SSL_read: Connection was reset, errno 10054 SSL证书没有经过第三方机构的签署 ， 取消SSL证书验证
-  - git config --global https.sslVerify "false"
+  - git config --global http.sslVerify "false"
   - git config --global https.sslVerify "false"
 
 - error: invalid path"" 某分支下的文件名格式不支持，最终导致在git clone的时候找不到这个文件路径导致的
