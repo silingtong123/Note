@@ -154,6 +154,7 @@ torch.distributed.all_reduce（input_tensor，reduce_op = ReduceOp.SUM）
     - 对梯度做一次Reduce-Scatter，保证每个GPU上所维持的那块梯度是聚合梯度, (N-1) *X/N, 可近似看作X
     - 每块GPU用自己对应的optimizer states和梯度去更新相应的W。更新完毕后，每块GPU维持了一块更新完毕的W。同理，对W做一次All-Gather,  (N-1) *X/N, 可近似看作X
     - ZERO-2的通信数据为2X，DPP的2X相等
+    - 如何保证一部分的完整聚合梯度，刚好对应相应的一部分os？
   - ZERO-3: $P_{os} +P_g +P_p$将模型状态中的Adam状态，模型梯度，模型参数分片->单个显卡 16X/N,无限大，0
     - 每块GPU上只保存部分参数W。将一个batch的数据分成3份，每块GPU各吃一份
     - 做forward时，对W做一次All-Gather，取回分布在别的GPU上的W，得到一份完整的W,forward做完，立刻把不是自己维护的W抛弃。(N-1) *X/N, 可近似看作X
@@ -165,6 +166,7 @@ torch.distributed.all_reduce（input_tensor，reduce_op = ReduceOp.SUM）
   - 模型并行：指在forward和backward的过程中，我只需要用自己维护的那块W来计算就行；同样的输入X，每块GPU上各算模型的一部分，最后通过某些方式聚合结果
   - ZERO: ZeRO来说，它做forward和backward的时候，是需要把各GPU上维护的W聚合起来的，即本质上还是用完整的W进行计算；它是不同的输入X，完整的参数W，最终再做聚合
 - ZeRO-Offload： 显存不够，内存来凑（Note:不能让通信成为瓶颈）
+- backward的目前是为了获取梯度
 
 ### Instruct Learning VS Prompt Learning
 指示学习 vs 提示学习
