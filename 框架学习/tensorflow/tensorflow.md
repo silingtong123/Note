@@ -12,10 +12,31 @@ TF会给每一个核心概念设计一个构建类
 #### 如何查看一个op
 
 - 查看前端
-- 查看后端
-  - 查看op注册：REGISTER_OP("Select")
-  - 查看kernel注册：REGISTER_XLA_OP(Name("Select"), SelectOp);
+- 查看后端：op和kernel的注册都是通过全局static变量来实现的
+  - 查看op注册：REGISTER_OP("Select"),  REGISTER_OP是注册OpDef中的静态信息和SetShapeFn
+    - static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr = OpDefBuilderWrapper：OpDefBuilderReceiver使用OpDefBuilderWrapper进行初始化，其初始化函数中调用OpRegistry::Global()->Register进行注册, 注册结构为vector deferred_，该vector元素为std::function，该函数主要调用wrapper.builder().Finalize
+    - OpDefBuilderWrapper 主要成员为 OpDefBuilder builder_， 主要函数为Attr，input, output, SetShapeFn等，这些函数底层调用OpDefBuilder的对应函数
+    - OpDefBuilder 起主要成员为OpRegistrationData op_reg_data_，Finalize函数负责最终初始化op_reg_data->op_def， 而OpRegistrationData的主要成员OpDef op_def; OpShapeInferenceFn shape_inference_fn;
+  - 查看kernel注册, REGISTER_KERNEL_BUILDER, 其中SelectOp 注册真正运算函数compute函数：
+  
+    ```c++
+    REGISTER_KERNEL_BUILDER(                                           \
+      Name("Select").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
+      SelectOp<CPUDevice, type>);
+    
+    //register_kernel命名空间下
+    class Name : public KernelDefBuilder{}
 
+    //主要成员KernelDef* kernel_def_;
+    class KernelDefBuilder{
+
+    }
+    ```
+
+    - KernelDefBuilder大多成员函数为设置kernel_def_， 其中Build成员函数返回kernel_def_指针并移交所有权
+    - static ::tensorflow::kernel_factory::OpKernelRegistrar ,其初始化函数参数为获得所有权的KernelDef *，class name, OpKernelFactory * factory指针(factory函数指针会创建一个该Op的对象，如上创建一个SelectOp<CPUDevice, type>，并返回指针 )，该函数会调用InitInternal注册kernel
+    - InitInternal 中会将factory注册到map中，其中key为kernel name和设备名以及label的concat，value为KernelRegistration(其用KernelDef，class name, OpKernelFactory * factory进行初始化，并初始化对应成员)，
+  
 #### 常见结构
 - LocalExecutorParams
   - "params" 为excecutor提供了一组上下文。我们期望不同的上下文会提供不同的实现。
