@@ -12,3 +12,4 @@ $$
 \end{bmatrix} \tag{2}
 $$
 - 偏导表示：$\partial{x}$
+- 对数表示：$log_2{18}$, $ln3$
