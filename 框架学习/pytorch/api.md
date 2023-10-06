@@ -83,7 +83,7 @@ torch.nn.init.kaiming_uniform_(w)
 
 ### **tensor.grad_fn.next_functions**
 
-- 如果F = D + E，F.grad_fn.next_functions也存在两项，分别对应于D, E两个变量，每个元组中的第一项对应于相应变量的grad_fn，第二项指示相应变量是产生其op的第几个输出,即有多少个输入，梯度就有多少个输出
+- 如果F = D + E，F.grad_fn.next_functions也存在两项，分别对应于D, E两个变量，每个元组中的第一项对应于相应变量的grad_fn，F.grad_fn.next_functions[0]= D.grad, 即第二项指示相应变量是产生其op的第几个输出,即有多少个输入，梯度就有多少个输出
 
 ### **tensor.backward**
 
@@ -249,6 +249,24 @@ r"""
 - Tensor多维数组底层实现是使用一块连续内存的1维数组,Tensor在元信息里保存了多维数组的形状，在访问元素时，通过多维度索引转化成1维数组相对于数组起始位置的偏移量即可找到对应的数据
 - 某些Tensor操作（如transpose、permute、narrow、expand）与原Tensor是共享内存中的数据，不会改变底层数组的存储，但原来在语义上相邻、内存里也相邻的元素在执行这样的操作后，在语义上相邻，但在内存不相邻，即不连续了（is not contiguous）
 - 如果Tensor不是连续的，调用tensor.contiguous则会重新开辟一块内存空间保证数据是在内存中是连续的，如果Tensor是连续的，则contiguous无操作
+
+### tensor.size
+- 返回指定维度的val，比如x(2,3,5),x.size(-1)==5, x.size(0)==2
+
+### torch.cat
+- 把tensor按指定维度进行拼接tensors
+
+### torch.stack
+- 指定一个新的维度拼接tenors, 可以将一批2维拼接成一个三维的tensor
+
+### torch.clone
+- 开辟新内存，不脱离计算图
+
+### torch.detach
+- 共享内存，脱离计算图
+
+### torch.clone().detach()
+- 开辟内存，脱离计算图
 
 ### torch.transpose(x, 0, 1)
 - 交互两个维度，常用于矩阵转置，由于会引起tensor不连续，所以一般需要在其后调用contiguous
